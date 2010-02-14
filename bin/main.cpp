@@ -10,6 +10,6 @@ int main(int argc, char *argv[]) {
     return 1;
   } else {
     repo->init();
-    repo->getLogGraph(argv[1]);
+    repo->outLogGraph(argv[1]);
   }
 }
