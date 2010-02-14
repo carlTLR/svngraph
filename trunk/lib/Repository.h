@@ -8,7 +8,7 @@ namespace scm {
   {
     public:
       // Object methods
-      virtual std::string getLogGraph(std::string) = 0;
+      virtual void outLogGraph(std::string) = 0;
       virtual Repository& init() = 0;
   };
 }

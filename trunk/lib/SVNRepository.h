@@ -11,21 +11,6 @@
 #include <boost/graph/adjacency_list.hpp>
 
 namespace scm {
-  struct SvnRevision {
-    int revNum;
-    std::string branch;
-    std::pair<int, std::string> branch_rev;
-    SvnRevision(int r_num=0, std::string b="") : revNum(r_num), branch(b), branch_rev(revNum, branch) {};
-  };
-
-  typedef boost::adjacency_list_traits<boost::vecS, boost::vecS, boost::directedS> AdjListTraits;
-  typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::directedS, SvnRevision> RepoGraph;
-
-  struct log_receiver_baton {
-    std::map<std::string, std::pair<int, AdjListTraits::vertex_descriptor> > branch_head;
-    RepoGraph repoGraph;
-  };
-
   class SVNRepository : public Repository
   {
     public:
@@ -39,10 +24,28 @@ namespace scm {
       static svn_error_t* CreateLogGraph(void *, svn_log_entry_t *, apr_pool_t *);
 
       // Object methods
-      std::string getLogGraph(std::string);
       SVNRepository& init();
+      void outLogGraph(std::string);
+
+      struct SvnRevision {
+        int revNum;
+        std::string branch;
+        std::pair<int, std::string> branch_rev;
+        SvnRevision(int r_num=0, std::string b="") : revNum(r_num), branch(b), branch_rev(revNum, branch) {};
+      };
+
+      typedef boost::adjacency_list_traits<boost::vecS, boost::vecS, boost::directedS> AdjListTraits;
+      typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::directedS, SvnRevision> RepoGraph;
+
+      struct log_receiver_baton {
+        std::map<std::string, std::pair<int, AdjListTraits::vertex_descriptor> > branch_head;
+        RepoGraph repoGraph;
+      };
 
     private:
+      // Object methods
+      void addMergeEdges(std::string, SVNRepository::log_receiver_baton *);
+
       // Members
       apr_pool_t *pool;
       apr_array_header_t *targets;
