@@ -44,7 +44,7 @@ namespace scm {
 
     private:
       // Object methods
-      void addMergeEdges(std::string, SVNRepository::log_receiver_baton *);
+      void addMergeEdges(const std::string &, SVNRepository::log_receiver_baton *);
 
       // Members
       apr_pool_t *pool;
