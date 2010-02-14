@@ -2,6 +2,7 @@
 #include <iostream>
 #include <boost/regex.hpp>
 #include <boost/graph/graphviz.hpp>
+#include <sstream>
 
 namespace scm {
   SVNRepository::SVNRepository()
@@ -57,33 +58,66 @@ namespace scm {
       // TODO: throw exception
     }
 
-    // addMergeEdges(target, &baton);
+    addMergeEdges(target, &baton);
 
     boost::write_graphviz(std::cout, baton.repoGraph, boost::make_label_writer(boost::get(&SVNRepository::SvnRevision::revNum, baton.repoGraph)));
   }
 
-  void SVNRepository::addMergeEdges(std::string target, SVNRepository::log_receiver_baton *lb)
+  void SVNRepository::addMergeEdges(const std::string &target, SVNRepository::log_receiver_baton *lb)
   {
     apr_hash_t **props;
     svn_error_t *err;
     svn_opt_revision_t revision, peg_revision;
-    revision.kind = svn_opt_revision_unspecified;
-    peg_revision.kind = svn_opt_revision_unspecified;
-    const char *path = target.c_str();
+    revision.kind = svn_opt_revision_number;
+    peg_revision.kind = svn_opt_revision_number;
 
-    if(err = svn_client_propget3(props, "svn:mergeinfo", path, &peg_revision, &revision, NULL, svn_depth_immediates, NULL, ctx, pool)) {
+    const char *root_url;
+    if(err = svn_client_root_url_from_path(&root_url, target.c_str(), ctx, pool)) {
       svn_handle_error2 (err, stderr, FALSE, "svngraph: ");
+      return;
       // TODO: throw exception
-    } else {
-      apr_hash_index_t *hi;
-      void *val;
-      const void *key;
-      for (hi = apr_hash_first(pool, *props); hi; hi = apr_hash_next(hi)) {
-        apr_hash_this(hi, &key, NULL, &val);
-        const std::string key_s = (const char *) key;
-        const std::string val_s = ((svn_string_t *) val)->data;
+    }
 
-        std::cout << key_s << "   " << val_s << std::endl;
+    for(
+        std::map<std::string, std::pair<int, AdjListTraits::vertex_descriptor> >::const_iterator branch_headI = lb->branch_head.begin();
+        branch_headI != lb->branch_head.end(); branch_headI++
+       ) {
+      const std::string path = root_url + branch_headI->first;
+      revision.value.number = branch_headI->second.first;
+      peg_revision.value.number = branch_headI->second.first;
+
+      if(err = svn_client_propget3(props, "svn:mergeinfo", path.c_str(), &peg_revision, &revision, NULL, svn_depth_empty, NULL, ctx, pool)) {
+        svn_handle_error2 (err, stderr, FALSE, "svngraph: ");
+        // TODO: throw exception
+      } else {
+        boost::smatch matches;
+        boost::regex mergeinfo_pattern(boost::regex("([\\/]?[^\\/]*\\/(?:trunk|branches\\/[^\\/]+|tags\\/[^\\/]+)):(\\d+)-(\\d+)"));
+        std::map<std::string, std::pair<int, int> > mergeinfo;
+        apr_hash_index_t *hi;
+        void *val;
+        const void *key;
+        for (hi = apr_hash_first(pool, *props); hi; hi = apr_hash_next(hi)) {
+          apr_hash_this(hi, &key, NULL, &val);
+          const std::string key_s = (const char *) key;
+          const std::string val_s = ((svn_string_t *) val)->data;
+          std::string::const_iterator begin = val_s.begin();
+
+          while(boost::regex_search(begin, val_s.end(), matches, mergeinfo_pattern)) {
+            std::istringstream(std::string(matches[2].first, matches[2].second)) >> mergeinfo[std::string(matches[1].first, matches[1].second)].first;
+            std::istringstream(std::string(matches[3].first, matches[3].second)) >> mergeinfo[std::string(matches[1].first, matches[1].second)].first;
+            begin = matches[0].second;
+          }
+        }
+
+        boost::property_map<SVNRepository::RepoGraph, std::pair<int, std::string> SVNRepository::SvnRevision::*>::type pMap = boost::get(&SVNRepository::SvnRevision::branch_rev, lb->repoGraph);
+        boost::graph_traits<SVNRepository::RepoGraph>::vertex_iterator vi, vi_end, next;
+        tie(vi, vi_end) = vertices(lb->repoGraph);
+        for (next = vi; vi != vi_end; vi = next) {
+          ++next;
+          if(mergeinfo[boost::get(pMap, *vi).second].first >= boost::get(pMap, *vi).first && mergeinfo[boost::get(pMap, *vi).second].second <= boost::get(pMap, *vi).first) {
+            boost::add_edge(*vi, branch_headI->second.second, lb->repoGraph);
+          }
+        }
       }
     }
   }
